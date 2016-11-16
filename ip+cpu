@@ -1,0 +1,91 @@
+package main
+
+import (
+	"github.com/kataras/iris"
+	"net"
+         "os"
+		"fmt"
+		"io/ioutil"
+		"strconv"
+		"strings"
+		"time"
+	  )
+	  
+func getCPUSample() (idle, total uint64) {
+    contents, err := ioutil.ReadFile("/proc/stat")
+    if err != nil {
+        return
+    }
+    lines := strings.Split(string(contents), "\n")
+    for _, line := range(lines) {
+        fields := strings.Fields(line)
+        if fields[0] == "cpu" {
+            numFields := len(fields)
+            for i := 1; i < numFields; i++ {
+                val, err := strconv.ParseUint(fields[i], 10, 64)
+                if err != nil {
+                    fmt.Println("Error: ", i, fields[i], err)
+                }
+                total += val // tally up all the numbers to get total ticks
+                if i == 4 {  // idle is the 5th field in the cpu line
+                    idle = val
+                }
+            }
+            return
+        }
+    }
+    return
+}
+
+
+func main() {
+
+    iris.Get("/component=txt", func(ctx *iris.Context) {
+        ctx.Write("Hello, %s", "World! this program is writtern to fetch various performance details of a PC")
+    })
+   
+   iris.Get("/component=ip", func(ctx *iris.Context) {
+          addrs, err := net.InterfaceAddrs()
+              if err != nil {
+              os.Stderr.WriteString("Oops: " + err.Error() + "\n")
+              os.Exit(1)
+	      
+                            }
+         for _, a := range addrs {
+           if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+              if ipnet.IP.To4() != nil {
+                 os.Stdout.WriteString(ipnet.IP.String() + "\n")
+		 ctx.Write("the ip address is!" )
+		 ctx.Write(ipnet.IP.String() + "\n")
+		 
+                                       }
+                                 }
+                          }
+      })
+
+    iris.Get("/component=status", func(ctx *iris.Context) {
+        ctx.Write("surprized! currently this will fetch your IP addresses.....")
+    })
+	iris.Get("/component=cpuUsage", func(ctx *iris.Context) {
+      idle0, total0 := getCPUSample()
+    time.Sleep(3 * time.Second)
+    idle1, total1 := getCPUSample()
+
+    idleTicks := float64(idle1 - idle0)
+    totalTicks := float64(total1 - total0)
+    cpuUsage := 100 * (totalTicks - idleTicks) / totalTicks
+
+    ctx.Write("CPU usage is %f%% [busy: %f, total: %f]\n", cpuUsage, totalTicks-idleTicks, totalTicks)
+
+    })
+
+    iris.Get("/myjson", func(ctx *iris.Context) {
+        ctx.JSON(iris.StatusOK, iris.Map{
+            "Name":     "Iris",
+            "Released": "13 March 2016",
+            "Stars":    5525,
+        })
+    })
+
+    iris.Listen(":8072")
+}
